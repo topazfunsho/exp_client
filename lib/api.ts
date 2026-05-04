@@ -86,6 +86,10 @@ export interface SignalPayload {
   confidence?: number;
   indicators?: string[];
   notes?: string;
+
+  // ✅ ADD THESE
+  status?: Signal['status'];
+  result?: Signal['result'];
 }
 
 export interface Stats {
