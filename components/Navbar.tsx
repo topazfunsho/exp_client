@@ -28,7 +28,7 @@ export default function Navbar() {
           <Link href="/dashboard" className="flex items-center gap-2 text-white font-bold text-lg">
             <TrendingUp className="w-6 h-6 text-emerald-400" />
             <span>
-              Expert<span className="text-emerald-400">Signals</span>
+              TopazTuniss<span className="text-emerald-400">Signals</span>
             </span>
           </Link>
 
