@@ -6,7 +6,7 @@ import SignalCard from '@/components/SignalCard';
 import Loader from '@/components/Loader';
 import { Search, Filter, ChevronLeft, ChevronRight, Cpu, User } from 'lucide-react';
 
-const STATUS_OPTIONS = ['all', 'active', 'won', 'lost', 'expired', 'skipped'] as const;
+const STATUS_OPTIONS = ['all', 'pending', 'active', 'won', 'lost', 'expired', 'skipped', 'cancelled'] as const;
 const SOURCE_OPTIONS = [
   { value: 'all',    label: 'All',    icon: null },
   { value: 'engine', label: 'AI Engine', icon: Cpu },

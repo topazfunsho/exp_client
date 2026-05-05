@@ -11,11 +11,16 @@ import { RefreshCw, Zap, Cpu, TrendingUp } from 'lucide-react';
 
 /**
  * A signal should stay on the dashboard if:
- *  - it is active (trade still open), OR
+ *  - it is pending (entry window not yet open), OR
+ *  - it is active (trade window open), OR
  *  - it is expired but the user hasn't recorded a result yet
  */
 function shouldShow(s: Signal) {
-  return s.status === 'active' || (s.status === 'expired' && !s.result);
+  return (
+    s.status === 'pending' ||
+    s.status === 'active' ||
+    (s.status === 'expired' && !s.result)
+  );
 }
 
 export default function DashboardPage() {
@@ -84,13 +89,20 @@ export default function DashboardPage() {
 
   /**
    * Called by SignalCard when the user clicks WIN / LOSS / DRAW.
-   * Immediately removes the card from the dashboard (result is now recorded).
+   * Immediately removes the card from the dashboard.
    */
   const handleResult = useCallback((id: string) => {
     setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
-    // Refresh stats after a short delay so the new win/loss is counted
     setTimeout(() => fetchData(true), 800);
   }, [fetchData]);
+
+  /**
+   * Called by SignalCard when the user clicks "Don't use this signal".
+   * Immediately removes the card from the dashboard.
+   */
+  const handleCancel = useCallback((id: string) => {
+    setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
+  }, []);
 
   const engineSignals = displaySignals.filter((s) => s.generatedBy === 'engine');
   const manualSignals = displaySignals.filter((s) => s.generatedBy === 'manual');
@@ -167,6 +179,7 @@ export default function DashboardPage() {
                     key={signal._id}
                     signal={signal}
                     onResult={handleResult}
+                    onCancel={handleCancel}
                   />
                 ))}
               </div>
@@ -189,6 +202,7 @@ export default function DashboardPage() {
                     key={signal._id}
                     signal={signal}
                     onResult={handleResult}
+                    onCancel={handleCancel}
                   />
                 ))}
               </div>

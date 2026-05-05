@@ -65,9 +65,11 @@ export const engineApi = {
 };
 
 // ── Signal result ─────────────────────────────────────────────────────────────
-// Any authenticated user can mark a signal result (WIN / LOSS / DRAW)
 export const setSignalResult = (id: string, result: 'win' | 'loss' | 'draw') =>
   api.post(`/api/signals/${id}/result`, { result });
+
+export const cancelSignal = (id: string) =>
+  api.post(`/api/signals/${id}/cancel`);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface User {
@@ -84,11 +86,12 @@ export interface Signal {
   direction: 'BUY' | 'SELL';
   timeframe: string;
   entryPrice: number;
+  entryTime: string;
   expiryTime: string;
   confidence: number;
   indicators: string[];
   notes: string;
-  status: 'active' | 'expired' | 'won' | 'lost' | 'skipped';
+  status: 'pending' | 'active' | 'expired' | 'won' | 'lost' | 'skipped' | 'cancelled';
   result: 'win' | 'loss' | 'draw' | null;
   createdBy: { name: string; email?: string };
   createdAt: string;
