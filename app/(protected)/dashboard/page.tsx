@@ -9,13 +9,24 @@ import EngineStatusBar from '@/components/EngineStatus';
 import Loader from '@/components/Loader';
 import { RefreshCw, Zap, Cpu, TrendingUp } from 'lucide-react';
 
+/**
+ * A signal should stay on the dashboard if:
+ *  - it is active (trade still open), OR
+ *  - it is expired but the user hasn't recorded a result yet
+ */
+function shouldShow(s: Signal) {
+  return s.status === 'active' || (s.status === 'expired' && !s.result);
+}
+
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [liveSignals, setLiveSignals]   = useState<Signal[]>([]);
-  const [stats, setStats]               = useState<Stats | null>(null);
-  const [loading, setLoading]           = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [lastUpdated, setLastUpdated]   = useState<Date | null>(null);
+
+  // displaySignals = active + expired-without-result
+  const [displaySignals, setDisplaySignals] = useState<Signal[]>([]);
+  const [stats, setStats]                   = useState<Stats | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [refreshing, setRefreshing]         = useState(false);
+  const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
   const prevSignalIds = useRef<Set<string>>(new Set());
 
@@ -24,15 +35,29 @@ export default function DashboardPage() {
     else setRefreshing(true);
 
     try {
-      const [liveRes, statsRes] = await Promise.all([
+      // Fetch live (active) signals + recently expired ones without a result
+      const [liveRes, expiredRes, statsRes] = await Promise.all([
         signalApi.live(),
+        // Get last 20 expired signals — we'll filter client-side for no-result ones
+        signalApi.list({ status: 'expired', limit: 20 }),
         signalApi.stats(),
       ]);
 
-      const incoming: Signal[] = liveRes.data.signals;
+      const liveSignals: Signal[]    = liveRes.data.signals ?? [];
+      const expiredSignals: Signal[] = expiredRes.data.signals ?? [];
 
-      // Detect brand-new signals (not seen before)
-      const newIds = incoming.map((s) => s._id);
+      // Merge: live + expired-without-result, deduplicated by _id
+      const seen = new Set<string>();
+      const merged: Signal[] = [];
+      for (const s of [...liveSignals, ...expiredSignals]) {
+        if (!seen.has(s._id) && shouldShow(s)) {
+          seen.add(s._id);
+          merged.push(s);
+        }
+      }
+
+      // Flash banner when a brand-new signal arrives
+      const newIds = liveSignals.map((s) => s._id);
       const hasNew = newIds.some((id) => !prevSignalIds.current.has(id));
       if (hasNew && prevSignalIds.current.size > 0) {
         setNewSignalFlash(true);
@@ -40,7 +65,7 @@ export default function DashboardPage() {
       }
       prevSignalIds.current = new Set(newIds);
 
-      setLiveSignals(incoming);
+      setDisplaySignals(merged);
       setStats(statsRes.data);
       setLastUpdated(new Date());
     } catch (err) {
@@ -53,14 +78,22 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
-
-    // Poll every 15 seconds — engine fires every 60s, expiry checker runs every 15s
     const interval = setInterval(() => fetchData(true), 15_000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  const engineSignals = liveSignals.filter((s) => s.generatedBy === 'engine');
-  const manualSignals = liveSignals.filter((s) => s.generatedBy === 'manual');
+  /**
+   * Called by SignalCard when the user clicks WIN / LOSS / DRAW.
+   * Immediately removes the card from the dashboard (result is now recorded).
+   */
+  const handleResult = useCallback((id: string) => {
+    setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
+    // Refresh stats after a short delay so the new win/loss is counted
+    setTimeout(() => fetchData(true), 800);
+  }, [fetchData]);
+
+  const engineSignals = displaySignals.filter((s) => s.generatedBy === 'engine');
+  const manualSignals = displaySignals.filter((s) => s.generatedBy === 'manual');
 
   return (
     <div className="space-y-8">
@@ -75,10 +108,8 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Engine status pill */}
+        <div className="flex items-center gap-3 flex-wrap">
           <EngineStatusBar />
-
           <button
             onClick={() => fetchData(true)}
             disabled={refreshing}
@@ -105,24 +136,24 @@ export default function DashboardPage() {
 
       {loading ? (
         <Loader text="Fetching live signals..." />
-      ) : liveSignals.length === 0 ? (
+      ) : displaySignals.length === 0 ? (
         <div className="text-center py-20 bg-gray-900 border border-gray-800 rounded-2xl">
           <Zap className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">No live signals right now</p>
+          <p className="text-gray-400 font-medium">No signals right now</p>
           <p className="text-gray-500 text-sm mt-1">
             The engine generates a new signal every minute — check back soon
           </p>
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Engine-generated signals */}
+          {/* AI Engine signals */}
           {engineSignals.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <Cpu className="w-5 h-5 text-purple-400" />
                 <h2 className="text-lg font-semibold text-white">AI Engine Signals</h2>
                 <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs rounded-full border border-purple-500/30">
-                  {engineSignals.length} active
+                  {engineSignals.length}
                 </span>
                 {lastUpdated && (
                   <span className="ml-auto text-xs text-gray-500">
@@ -132,7 +163,11 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {engineSignals.map((signal) => (
-                  <SignalCard key={signal._id} signal={signal} />
+                  <SignalCard
+                    key={signal._id}
+                    signal={signal}
+                    onResult={handleResult}
+                  />
                 ))}
               </div>
             </section>
@@ -145,12 +180,16 @@ export default function DashboardPage() {
                 <TrendingUp className="w-5 h-5 text-emerald-400" />
                 <h2 className="text-lg font-semibold text-white">Manual Signals</h2>
                 <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
-                  {manualSignals.length} active
+                  {manualSignals.length}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {manualSignals.map((signal) => (
-                  <SignalCard key={signal._id} signal={signal} />
+                  <SignalCard
+                    key={signal._id}
+                    signal={signal}
+                    onResult={handleResult}
+                  />
                 ))}
               </div>
             </section>

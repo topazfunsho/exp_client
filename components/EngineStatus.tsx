@@ -49,14 +49,24 @@ export default function EngineStatusBar() {
       <div className="flex items-center gap-2">
         {error ? (
           <WifiOff className="w-4 h-4 text-red-400" />
+        ) : status?.status === 'paused' ? (
+          <Cpu className="w-4 h-4 text-yellow-400" />
         ) : (
           <div className="relative flex items-center justify-center">
             <span className="absolute w-3 h-3 bg-emerald-500 rounded-full animate-ping opacity-60" />
             <Cpu className="w-4 h-4 text-emerald-400 relative z-10" />
           </div>
         )}
-        <span className={`text-xs font-medium ${error ? 'text-red-400' : 'text-emerald-400'}`}>
-          {error ? 'Engine offline' : 'Engine running'}
+        <span
+          className={`text-xs font-medium ${
+            error
+              ? 'text-red-400'
+              : status?.status === 'paused'
+              ? 'text-yellow-400'
+              : 'text-emerald-400'
+          }`}
+        >
+          {error ? 'Engine offline' : status?.status === 'paused' ? 'Engine paused' : 'Engine running'}
         </span>
       </div>
 

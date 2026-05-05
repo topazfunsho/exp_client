@@ -60,7 +60,14 @@ export const signalApi = {
 // ── Engine ────────────────────────────────────────────────────────────────────
 export const engineApi = {
   status: () => api.get('/api/engine/status'),
+  pause:  () => api.post('/api/engine/pause'),
+  resume: () => api.post('/api/engine/resume'),
 };
+
+// ── Signal result ─────────────────────────────────────────────────────────────
+// Any authenticated user can mark a signal result (WIN / LOSS / DRAW)
+export const setSignalResult = (id: string, result: 'win' | 'loss' | 'draw') =>
+  api.post(`/api/signals/${id}/result`, { result });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface User {
@@ -81,7 +88,7 @@ export interface Signal {
   confidence: number;
   indicators: string[];
   notes: string;
-  status: 'active' | 'expired' | 'won' | 'lost';
+  status: 'active' | 'expired' | 'won' | 'lost' | 'skipped';
   result: 'win' | 'loss' | 'draw' | null;
   createdBy: { name: string; email?: string };
   createdAt: string;
@@ -89,7 +96,7 @@ export interface Signal {
 }
 
 export interface EngineStatus {
-  status: 'running' | 'stopped';
+  status: 'running' | 'paused' | 'stopped';
   nextSignalIn: string;
   latestSignal: Signal | null;
 }

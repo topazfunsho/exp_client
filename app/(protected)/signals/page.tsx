@@ -6,7 +6,7 @@ import SignalCard from '@/components/SignalCard';
 import Loader from '@/components/Loader';
 import { Search, Filter, ChevronLeft, ChevronRight, Cpu, User } from 'lucide-react';
 
-const STATUS_OPTIONS = ['all', 'active', 'expired', 'won', 'lost'] as const;
+const STATUS_OPTIONS = ['all', 'active', 'won', 'lost', 'expired', 'skipped'] as const;
 const SOURCE_OPTIONS = [
   { value: 'all',    label: 'All',    icon: null },
   { value: 'engine', label: 'AI Engine', icon: Cpu },
@@ -64,6 +64,7 @@ export default function SignalsPage() {
         <h1 className="text-2xl font-bold text-white">All Signals</h1>
         <p className="text-gray-400 text-sm mt-1">
           {total} signal{total !== 1 ? 's' : ''} found
+          <span className="text-gray-600"> · skipped signals excluded by default</span>
         </p>
       </div>
 
