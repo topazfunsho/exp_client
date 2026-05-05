@@ -9,24 +9,14 @@ import EngineStatusBar from '@/components/EngineStatus';
 import Loader from '@/components/Loader';
 import { RefreshCw, Zap, Cpu, TrendingUp } from 'lucide-react';
 
-/**
- * A signal should stay on the dashboard if:
- *  - it is pending (entry window not yet open), OR
- *  - it is active (trade window open), OR
- *  - it is expired but the user hasn't recorded a result yet
- */
+// Only show pending and active signals — expired ones are removed immediately
 function shouldShow(s: Signal) {
-  return (
-    s.status === 'pending' ||
-    s.status === 'active' ||
-    (s.status === 'expired' && !s.result)
-  );
+  return s.status === 'pending' || s.status === 'active';
 }
 
 export default function DashboardPage() {
   const { user } = useAuth();
 
-  // displaySignals = active + expired-without-result
   const [displaySignals, setDisplaySignals] = useState<Signal[]>([]);
   const [stats, setStats]                   = useState<Stats | null>(null);
   const [loading, setLoading]               = useState(true);
@@ -40,21 +30,16 @@ export default function DashboardPage() {
     else setRefreshing(true);
 
     try {
-      // Fetch live (active) signals + recently expired ones without a result
-      const [liveRes, expiredRes, statsRes] = await Promise.all([
+      const [liveRes, statsRes] = await Promise.all([
         signalApi.live(),
-        // Get last 20 expired signals — we'll filter client-side for no-result ones
-        signalApi.list({ status: 'expired', limit: 20 }),
         signalApi.stats(),
       ]);
 
-      const liveSignals: Signal[]    = liveRes.data.signals ?? [];
-      const expiredSignals: Signal[] = expiredRes.data.signals ?? [];
+      const liveSignals: Signal[] = liveRes.data.signals ?? [];
 
-      // Merge: live + expired-without-result, deduplicated by _id
       const seen = new Set<string>();
       const merged: Signal[] = [];
-      for (const s of [...liveSignals, ...expiredSignals]) {
+      for (const s of liveSignals) {
         if (!seen.has(s._id) && shouldShow(s)) {
           seen.add(s._id);
           merged.push(s);
@@ -87,26 +72,20 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  /**
-   * Manual refresh — clears all displayed signals immediately,
-   * then fetches fresh data from the server.
-   */
+  // Clears all signals immediately, then fetches fresh from server
   const handleManualRefresh = useCallback(async () => {
     setDisplaySignals([]);
     prevSignalIds.current = new Set();
     await fetchData(true);
   }, [fetchData]);
-   /* Immediately removes the card from the dashboard.
-   */
+
+  // Remove card after user marks WIN / LOSS / DRAW
   const handleResult = useCallback((id: string) => {
     setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
     setTimeout(() => fetchData(true), 800);
   }, [fetchData]);
 
-  /**
-   * Called by SignalCard when the user clicks "Don't use this signal".
-   * Immediately removes the card from the dashboard.
-   */
+  // Remove card after user cancels the signal
   const handleCancel = useCallback((id: string) => {
     setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
   }, []);
