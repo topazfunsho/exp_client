@@ -87,7 +87,6 @@ export interface SignalPayload {
   indicators?: string[];
   notes?: string;
 
-  // ✅ ADD THESE
   status?: Signal['status'];
   result?: Signal['result'];
 }
