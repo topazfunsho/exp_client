@@ -44,12 +44,22 @@ export const authApi = {
 export const signalApi = {
   live: () => api.get('/api/signals/live'),
   stats: () => api.get('/api/signals/stats'),
-  list: (params?: { status?: string; asset?: string; page?: number; limit?: number }) =>
-    api.get('/api/signals', { params }),
+  list: (params?: {
+    status?: string;
+    asset?: string;
+    page?: number;
+    limit?: number;
+    generatedBy?: 'engine' | 'manual';
+  }) => api.get('/api/signals', { params }),
   get: (id: string) => api.get(`/api/signals/${id}`),
   create: (data: SignalPayload) => api.post('/api/signals', data),
   update: (id: string, data: Partial<SignalPayload>) => api.put(`/api/signals/${id}`, data),
   delete: (id: string) => api.delete(`/api/signals/${id}`),
+};
+
+// ── Engine ────────────────────────────────────────────────────────────────────
+export const engineApi = {
+  status: () => api.get('/api/engine/status'),
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -75,6 +85,13 @@ export interface Signal {
   result: 'win' | 'loss' | 'draw' | null;
   createdBy: { name: string; email?: string };
   createdAt: string;
+  generatedBy: 'engine' | 'manual';
+}
+
+export interface EngineStatus {
+  status: 'running' | 'stopped';
+  nextSignalIn: string;
+  latestSignal: Signal | null;
 }
 
 export interface SignalPayload {
