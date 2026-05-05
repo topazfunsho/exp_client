@@ -96,7 +96,7 @@ export default function DashboardPage() {
     prevSignalIds.current = new Set();
     await fetchData(true);
   }, [fetchData]);
-   * Immediately removes the card from the dashboard.
+   /* Immediately removes the card from the dashboard.
    */
   const handleResult = useCallback((id: string) => {
     setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
