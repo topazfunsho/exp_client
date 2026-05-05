@@ -88,7 +88,14 @@ export default function DashboardPage() {
   }, [fetchData]);
 
   /**
-   * Called by SignalCard when the user clicks WIN / LOSS / DRAW.
+   * Manual refresh — clears all displayed signals immediately,
+   * then fetches fresh data from the server.
+   */
+  const handleManualRefresh = useCallback(async () => {
+    setDisplaySignals([]);
+    prevSignalIds.current = new Set();
+    await fetchData(true);
+  }, [fetchData]);
    * Immediately removes the card from the dashboard.
    */
   const handleResult = useCallback((id: string) => {
@@ -123,7 +130,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3 flex-wrap">
           <EngineStatusBar />
           <button
-            onClick={() => fetchData(true)}
+            onClick={handleManualRefresh}
             disabled={refreshing}
             className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-sm text-gray-300 transition-colors disabled:opacity-50"
           >
