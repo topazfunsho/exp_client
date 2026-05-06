@@ -11,7 +11,7 @@ interface Props {
   initial?: Signal | null;
 }
 
-const TIMEFRAMES = ['30s', '1m', '2m', '5m', '15m', '30m', '1h'];
+const TIMEFRAMES = ['30s', '1m', '2m', '3m', '4m', '5m', '15m', '30m', '1h'];
 const COMMON_INDICATORS = ['RSI', 'MACD', 'Bollinger Bands', 'EMA', 'SMA', 'Stochastic', 'ATR'];
 
 const toLocalDatetimeValue = (iso?: string) => {
