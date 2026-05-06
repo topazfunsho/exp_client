@@ -16,6 +16,7 @@ interface Props {
   onDelete?: (id: string) => void;
 }
 
+// Shared signal status badge styles (neutral — not user-specific)
 const statusStyles: Record<string, string> = {
   pending:   'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   active:    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
@@ -26,30 +27,27 @@ const statusStyles: Record<string, string> = {
   cancelled: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
 };
 
-const resultStyles: Record<string, string> = {
-  win:  'text-emerald-400',
-  loss: 'text-red-400',
-  draw: 'text-yellow-400',
+// User's personal result badge styles
+const userResultStyles: Record<string, string> = {
+  win:  'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  loss: 'bg-red-500/20 text-red-400 border-red-500/30',
+  draw: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
 };
 
-/** Returns seconds remaining until a target date, or 0 if past */
 function secsUntil(iso: string) {
   return Math.max(0, Math.floor((new Date(iso).getTime() - Date.now()) / 1000));
 }
-
 function pad(n: number) { return String(n).padStart(2, '0'); }
-
 function formatSecs(s: number) {
   const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return m > 0 ? `${pad(m)}:${pad(sec)}` : `${pad(sec)}s`;
+  return m > 0 ? `${pad(m)}:${pad(s % 60)}` : `${pad(s)}s`;
 }
 
 export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit, onDelete }: Props) {
   const isBuy    = signal.direction === 'BUY';
   const isEngine = signal.generatedBy === 'engine';
 
-  // ── Live countdown state ────────────────────────────────────────────────────
+  // ── Live countdown ──────────────────────────────────────────────────────────
   const [entrySecsLeft,  setEntrySecsLeft]  = useState(() => secsUntil(signal.entryTime));
   const [expirySecsLeft, setExpirySecsLeft] = useState(() => secsUntil(signal.expiryTime));
 
@@ -61,13 +59,29 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
     return () => clearInterval(t);
   }, [signal.entryTime, signal.expiryTime]);
 
-  // Derived phase based on live timers (client-side truth)
-  const isPending  = signal.status === 'pending' && entrySecsLeft > 0;
-  const isActive   = signal.status === 'active'  || (signal.status === 'pending' && entrySecsLeft === 0);
-  const isExpired  = signal.status === 'expired' || (isActive && expirySecsLeft === 0);
-  const needsResult = !signal.result && (isActive || isExpired) && signal.status !== 'cancelled';
+  // ── Phase logic (client-side, based on live timers) ─────────────────────────
+  const isPending = signal.status === 'pending' && entrySecsLeft > 0;
+  const isActive  = signal.status === 'active'  || (signal.status === 'pending' && entrySecsLeft === 0);
 
-  // ── Action state ────────────────────────────────────────────────────────────
+  // ── Per-user state ──────────────────────────────────────────────────────────
+  // userStatus/userResult come from the backend overlay — they are THIS user's
+  // personal interaction, invisible to other users.
+  const userActed     = signal.userStatus !== null;          // user already did something
+  const userCancelled = signal.userStatus === 'cancelled';
+  const userHasResult = signal.userResult !== null;
+
+  // Show WIN/LOSS buttons when:
+  //  - signal is active (entry time passed, trade window open)
+  //  - user hasn't recorded a result yet
+  //  - user hasn't cancelled
+  const showResultButtons = isActive && !userHasResult && !userCancelled;
+
+  // Show CANCEL button when:
+  //  - signal is pending or active
+  //  - user hasn't acted yet
+  const showCancelButton = (isPending || isActive) && !userActed;
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState<'win' | 'loss' | 'draw' | 'cancel' | null>(null);
 
   const handleResult = async (result: 'win' | 'loss' | 'draw') => {
@@ -100,19 +114,13 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
         isBuy
           ? 'border-emerald-500/30 hover:border-emerald-500/60'
           : 'border-red-500/30 hover:border-red-500/60'
-      } ${signal.status === 'cancelled' ? 'opacity-60' : ''}`}
+      } ${userCancelled ? 'opacity-50' : ''}`}
     >
-      {/* Top glow strip — yellow when pending, coloured when active */}
-      {(isPending || isActive) && signal.status !== 'cancelled' && (
-        <div
-          className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl transition-colors ${
-            isPending
-              ? 'bg-yellow-500'
-              : isBuy
-              ? 'bg-emerald-500'
-              : 'bg-red-500'
-          }`}
-        />
+      {/* Top glow strip */}
+      {(isPending || isActive) && !userCancelled && (
+        <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl ${
+          isPending ? 'bg-yellow-500' : isBuy ? 'bg-emerald-500' : 'bg-red-500'
+        }`} />
       )}
 
       {/* Header */}
@@ -135,32 +143,24 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
           </p>
         </div>
 
-        <span
-          className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold ${
-            isBuy ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-          }`}
-        >
+        <span className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm font-bold ${
+          isBuy ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+        }`}>
           {isBuy ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
           {signal.direction}
         </span>
       </div>
 
-      {/* ── Entry / Expiry time row ─────────────────────────────────────────── */}
+      {/* Entry / Expiry timers */}
       <div className="grid grid-cols-2 gap-2">
-        {/* Entry time */}
         <div className={`rounded-xl p-3 text-center border ${
-          isPending
-            ? 'bg-yellow-500/10 border-yellow-500/20'
-            : 'bg-gray-800/80 border-transparent'
+          isPending ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-gray-800/80 border-transparent'
         }`}>
           <p className="text-gray-400 text-xs mb-1 flex items-center justify-center gap-1">
-            <Timer className="w-3 h-3" />
-            {isPending ? 'Opens in' : 'Entry at'}
+            <Timer className="w-3 h-3" />{isPending ? 'Opens in' : 'Entry at'}
           </p>
           {isPending ? (
-            <p className={`font-bold text-sm tabular-nums ${
-              entrySecsLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-yellow-400'
-            }`}>
+            <p className={`font-bold text-sm tabular-nums ${entrySecsLeft <= 10 ? 'text-red-400 animate-pulse' : 'text-yellow-400'}`}>
               {formatSecs(entrySecsLeft)}
             </p>
           ) : (
@@ -170,20 +170,12 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
           )}
         </div>
 
-        {/* Expiry / trade countdown */}
-        <div className={`rounded-xl p-3 text-center border ${
-          isActive && expirySecsLeft > 0
-            ? 'bg-gray-800/80 border-transparent'
-            : 'bg-gray-800/40 border-transparent'
-        }`}>
+        <div className="bg-gray-800/80 rounded-xl p-3 text-center border border-transparent">
           <p className="text-gray-400 text-xs mb-1 flex items-center justify-center gap-1">
-            <Clock className="w-3 h-3" />
-            {isActive && expirySecsLeft > 0 ? 'Closes in' : 'Expires at'}
+            <Clock className="w-3 h-3" />{isActive && expirySecsLeft > 0 ? 'Closes in' : 'Expires at'}
           </p>
           {isActive && expirySecsLeft > 0 ? (
-            <p className={`font-bold text-sm tabular-nums ${
-              expirySecsLeft <= 15 ? 'text-red-400 animate-pulse' : 'text-emerald-400'
-            }`}>
+            <p className={`font-bold text-sm tabular-nums ${expirySecsLeft <= 15 ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>
               {formatSecs(expirySecsLeft)}
             </p>
           ) : (
@@ -217,21 +209,16 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
           <p className={`font-bold text-sm ${
             signal.confidence >= 75 ? 'text-emerald-400' :
             signal.confidence >= 55 ? 'text-yellow-400' : 'text-red-400'
-          }`}>
-            {signal.confidence}%
-          </p>
+          }`}>{signal.confidence}%</p>
         </div>
       </div>
 
       {/* Confidence bar */}
       <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${
-            signal.confidence >= 75 ? 'bg-emerald-500' :
-            signal.confidence >= 55 ? 'bg-yellow-500' : 'bg-red-500'
-          }`}
-          style={{ width: `${signal.confidence}%` }}
-        />
+        <div className={`h-full rounded-full transition-all duration-500 ${
+          signal.confidence >= 75 ? 'bg-emerald-500' :
+          signal.confidence >= 55 ? 'bg-yellow-500' : 'bg-red-500'
+        }`} style={{ width: `${signal.confidence}%` }} />
       </div>
 
       {/* Indicators */}
@@ -248,15 +235,11 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
       {/* Notes */}
       {signal.notes && (
         <div className={`text-xs rounded-xl px-3 py-2 ${
-          isEngine
-            ? 'bg-gray-800/60 text-gray-300 border border-gray-700/50'
-            : 'text-gray-400 border-l-2 border-gray-700 pl-3'
+          isEngine ? 'bg-gray-800/60 text-gray-300 border border-gray-700/50' : 'text-gray-400 border-l-2 border-gray-700 pl-3'
         }`}>
           {isEngine ? (
             <div className="space-y-0.5">
-              {signal.notes.split(' | ').map((note, i) => (
-                <p key={i} className="leading-relaxed">{note}</p>
-              ))}
+              {signal.notes.split(' | ').map((note, i) => <p key={i} className="leading-relaxed">{note}</p>)}
             </div>
           ) : (
             <p className="italic">{signal.notes}</p>
@@ -264,26 +247,26 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
         </div>
       )}
 
-      {/* Footer: status badge + result */}
+      {/* Footer: signal status + user's personal result */}
       <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+        {/* Shared signal status */}
         <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${statusStyles[signal.status]}`}>
           {signal.status}
         </span>
-        {signal.result && (
-          <span className={`text-xs font-bold uppercase ${resultStyles[signal.result]}`}>
-            {signal.result}
+
+        {/* User's personal result — only visible to this user */}
+        {signal.userResult && (
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full border uppercase ${userResultStyles[signal.userResult]}`}>
+            You: {signal.userResult}
           </span>
+        )}
+        {userCancelled && !signal.userResult && (
+          <span className="text-xs text-orange-400 font-medium">You cancelled</span>
         )}
       </div>
 
-      {/* ── CANCEL button — shown while pending or active, no result yet ──────── */}
-      {(isPending || (isActive && !needsResult === false)) && !signal.result && signal.status !== 'cancelled' && !needsResult && (
-        // This branch: pending and not yet needing result
-        null
-      )}
-
-      {/* Cancel: show when pending or active and no result yet */}
-      {(signal.status === 'pending' || signal.status === 'active') && !signal.result && (
+      {/* ── CANCEL button ─────────────────────────────────────────────────────── */}
+      {showCancelButton && (
         <div className="pt-1 border-t border-gray-800">
           <button
             onClick={handleCancel}
@@ -300,48 +283,35 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
         </div>
       )}
 
-      {/* ── WIN / LOSS / DRAW buttons — shown after entry time, before result ── */}
-      {needsResult && (
+      {/* ── WIN / LOSS / DRAW buttons ─────────────────────────────────────────── */}
+      {showResultButtons && (
         <div className="pt-1 border-t border-gray-800 space-y-2">
           <p className="text-xs text-gray-400 text-center font-medium">
-            {expirySecsLeft > 0 ? 'Trade open — record result when done:' : 'Trade closed — how did it go?'}
+            {expirySecsLeft > 0 ? 'Trade open — record your result:' : 'Trade closed — how did it go?'}
           </p>
           <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => handleResult('win')}
-              disabled={!!submitting}
-              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                submitting === 'win'
-                  ? 'bg-emerald-500 text-black border-emerald-500 scale-95'
-                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25 hover:border-emerald-500/60 active:scale-95'
-              } disabled:opacity-60 disabled:cursor-not-allowed`}
-            >
-              <Trophy className="w-3.5 h-3.5" /> WIN
-            </button>
-
-            <button
-              onClick={() => handleResult('loss')}
-              disabled={!!submitting}
-              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                submitting === 'loss'
-                  ? 'bg-red-500 text-white border-red-500 scale-95'
-                  : 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/25 hover:border-red-500/60 active:scale-95'
-              } disabled:opacity-60 disabled:cursor-not-allowed`}
-            >
-              <XCircle className="w-3.5 h-3.5" /> LOSS
-            </button>
-
-            <button
-              onClick={() => handleResult('draw')}
-              disabled={!!submitting}
-              className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                submitting === 'draw'
-                  ? 'bg-yellow-500 text-black border-yellow-500 scale-95'
-                  : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/25 hover:border-yellow-500/60 active:scale-95'
-              } disabled:opacity-60 disabled:cursor-not-allowed`}
-            >
-              <Minus className="w-3.5 h-3.5" /> DRAW
-            </button>
+            {(['win', 'loss', 'draw'] as const).map((r) => {
+              const styles = {
+                win:  { active: 'bg-emerald-500 text-black border-emerald-500', idle: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25 hover:border-emerald-500/60' },
+                loss: { active: 'bg-red-500 text-white border-red-500',         idle: 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/25 hover:border-red-500/60' },
+                draw: { active: 'bg-yellow-500 text-black border-yellow-500',   idle: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/25 hover:border-yellow-500/60' },
+              };
+              const icons = { win: Trophy, loss: XCircle, draw: Minus };
+              const Icon = icons[r];
+              return (
+                <button
+                  key={r}
+                  onClick={() => handleResult(r)}
+                  disabled={!!submitting}
+                  className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                    submitting === r ? styles[r].active + ' scale-95' : styles[r].idle
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {r.toUpperCase()}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -349,16 +319,12 @@ export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit
       {/* Admin actions */}
       {isAdmin && (
         <div className="flex gap-2 pt-1 border-t border-gray-800">
-          <button
-            onClick={() => onEdit?.(signal)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-blue-400 hover:bg-blue-400/10 transition-colors border border-blue-400/20"
-          >
+          <button onClick={() => onEdit?.(signal)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-blue-400 hover:bg-blue-400/10 transition-colors border border-blue-400/20">
             <Pencil className="w-3.5 h-3.5" /> Edit
           </button>
-          <button
-            onClick={() => onDelete?.(signal._id)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-400/10 transition-colors border border-red-400/20"
-          >
+          <button onClick={() => onDelete?.(signal._id)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-400/10 transition-colors border border-red-400/20">
             <Trash2 className="w-3.5 h-3.5" /> Delete
           </button>
         </div>

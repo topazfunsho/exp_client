@@ -91,11 +91,15 @@ export interface Signal {
   confidence: number;
   indicators: string[];
   notes: string;
+  // Shared signal status (neutral — not user-specific)
   status: 'pending' | 'active' | 'expired' | 'won' | 'lost' | 'skipped' | 'cancelled';
   result: 'win' | 'loss' | 'draw' | null;
   createdBy: { name: string; email?: string };
   createdAt: string;
   generatedBy: 'engine' | 'manual';
+  // Per-user overlay — only present when fetched by an authenticated user
+  userStatus: 'taken' | 'cancelled' | 'won' | 'lost' | 'draw' | null;
+  userResult: 'win' | 'loss' | 'draw' | null;
 }
 
 export interface EngineStatus {
