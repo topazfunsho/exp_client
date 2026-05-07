@@ -7,7 +7,8 @@ import SignalCard from '@/components/SignalCard';
 import StatsBar from '@/components/StatsBar';
 import EngineStatusBar from '@/components/EngineStatus';
 import Loader from '@/components/Loader';
-import { RefreshCw, Zap, Cpu, TrendingUp } from 'lucide-react';
+import { playSignalAlert, unlockAudio } from '@/lib/sound';
+import { RefreshCw, Zap, Cpu, TrendingUp, Volume2 } from 'lucide-react';
 
 // Only show pending and active signals — expired ones are removed immediately
 function shouldShow(s: Signal) {
@@ -23,7 +24,19 @@ export default function DashboardPage() {
   const [refreshing, setRefreshing]         = useState(false);
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
+  const [soundEnabled, setSoundEnabled]     = useState(true);
   const prevSignalIds = useRef<Set<string>>(new Set());
+
+  // Unlock AudioContext on first user interaction with the page
+  useEffect(() => {
+    const unlock = () => { unlockAudio(); };
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -46,12 +59,13 @@ export default function DashboardPage() {
         }
       }
 
-      // Flash banner when a brand-new signal arrives
+      // Flash banner + sound when a brand-new signal arrives
       const newIds = liveSignals.map((s) => s._id);
       const hasNew = newIds.some((id) => !prevSignalIds.current.has(id));
       if (hasNew && prevSignalIds.current.size > 0) {
         setNewSignalFlash(true);
         setTimeout(() => setNewSignalFlash(false), 3000);
+        if (soundEnabled) playSignalAlert();
       }
       prevSignalIds.current = new Set(newIds);
 
@@ -108,6 +122,19 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-3 flex-wrap">
           <EngineStatusBar />
+          {/* Sound toggle */}
+          <button
+            onClick={() => setSoundEnabled((v) => !v)}
+            title={soundEnabled ? 'Mute signal alerts' : 'Unmute signal alerts'}
+            className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-sm transition-colors ${
+              soundEnabled
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            <Volume2 className="w-4 h-4" />
+            {soundEnabled ? 'Sound on' : 'Sound off'}
+          </button>
           <button
             onClick={handleManualRefresh}
             disabled={refreshing}
