@@ -25,16 +25,22 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
   const [soundEnabled, setSoundEnabled]     = useState(true);
+  const soundEnabledRef = useRef(true); // ref so fetchData always reads current value
   const prevSignalIds = useRef<Set<string>>(new Set());
 
-  // Unlock AudioContext on first user interaction with the page
+  // Keep ref in sync with state
+  useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
+
+  // Unlock AudioContext on first user interaction — required by all browsers
   useEffect(() => {
-    const unlock = () => { unlockAudio(); };
-    window.addEventListener('click', unlock, { once: true });
-    window.addEventListener('keydown', unlock, { once: true });
+    const unlock = () => unlockAudio();
+    window.addEventListener('click',   unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
+    window.addEventListener('touchstart', unlock, { passive: true });
     return () => {
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('keydown', unlock);
+      window.removeEventListener('click',      unlock);
+      window.removeEventListener('keydown',    unlock);
+      window.removeEventListener('touchstart', unlock);
     };
   }, []);
 
@@ -65,7 +71,8 @@ export default function DashboardPage() {
       if (hasNew && prevSignalIds.current.size > 0) {
         setNewSignalFlash(true);
         setTimeout(() => setNewSignalFlash(false), 3000);
-        if (soundEnabled) playSignalAlert();
+        // Use ref so we always read the latest soundEnabled value
+        if (soundEnabledRef.current) playSignalAlert();
       }
       prevSignalIds.current = new Set(newIds);
 

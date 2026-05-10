@@ -1,6 +1,7 @@
 /**
  * Sound notifications using the Web Audio API.
- * No external files needed — tones are generated programmatically.
+ * No external files — tones are generated programmatically.
+ * Works on desktop and mobile browsers.
  */
 
 let audioCtx: AudioContext | null = null;
@@ -8,9 +9,11 @@ let audioCtx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {
-    audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const Ctx = window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    audioCtx = new Ctx();
   }
-  // Resume if suspended (browsers suspend until user interaction)
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
@@ -18,44 +21,56 @@ function getCtx(): AudioContext | null {
 }
 
 /**
- * Play a short ascending two-tone chime — used for new signal alerts.
- * Sounds like a soft "ding-ding" notification.
+ * Play a single tone with smooth attack and decay.
+ */
+function playTone(
+  ctx: AudioContext,
+  freq: number,
+  startTime: number,
+  duration: number,
+  volume = 0.4,
+  type: OscillatorType = 'sine'
+) {
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+
+  // Smooth attack (10ms) then exponential decay
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.02);
+}
+
+/**
+ * Signal alert — three ascending notes (C5 → E5 → G5).
+ * Audible and pleasant on both speakers and phone speakers.
  */
 export function playSignalAlert(): void {
   const ctx = getCtx();
   if (!ctx) return;
 
-  const now = ctx.currentTime;
+  const t = ctx.currentTime;
 
-  // Two notes: C5 then E5 — pleasant ascending chime
-  const notes = [
-    { freq: 523.25, start: 0,    duration: 0.18 },  // C5
-    { freq: 659.25, start: 0.20, duration: 0.25 },  // E5
-  ];
+  // C5 → E5 → G5  (major chord arpeggio — universally recognised as "alert")
+  playTone(ctx, 523.25, t + 0.00, 0.18, 0.40); // C5
+  playTone(ctx, 659.25, t + 0.18, 0.18, 0.40); // E5
+  playTone(ctx, 783.99, t + 0.36, 0.28, 0.45); // G5 — held slightly longer
 
-  notes.forEach(({ freq, start, duration }) => {
-    const osc    = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, now + start);
-
-    // Soft attack, quick decay
-    gainNode.gain.setValueAtTime(0, now + start);
-    gainNode.gain.linearRampToValueAtTime(0.35, now + start + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
-
-    osc.start(now + start);
-    osc.stop(now + start + duration + 0.05);
-  });
+  // Subtle harmonic layer on the last note for richness
+  playTone(ctx, 783.99 * 2, t + 0.36, 0.28, 0.08, 'triangle');
 }
 
 /**
- * Unlock the AudioContext on first user interaction.
- * Call this once on any click/keydown in the app.
+ * Call this on the first user interaction (click / keydown / touchstart).
+ * Browsers require a user gesture before AudioContext can play sound.
  */
 export function unlockAudio(): void {
   getCtx();
