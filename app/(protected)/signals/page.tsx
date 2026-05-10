@@ -32,9 +32,10 @@ export default function SignalsPage() {
   const fetchSignals = useCallback(async () => {
     setLoading(true);
     try {
-      const params: Record<string, string | number> = {
+      const params: Record<string, string | number | boolean> = {
         page:  filters.page,
         limit: filters.limit,
+        mine:  true,   // always scope to this user's signals only
       };
       if (filters.status !== 'all') params.status = filters.status;
       if (filters.asset.trim())     params.asset  = filters.asset.trim();
@@ -61,10 +62,9 @@ export default function SignalsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">All Signals</h1>
+        <h1 className="text-2xl font-bold text-white">My Signals</h1>
         <p className="text-gray-400 text-sm mt-1">
-          {total} signal{total !== 1 ? 's' : ''} found
-          <span className="text-gray-600"> · skipped signals excluded by default</span>
+          {total} signal{total !== 1 ? 's' : ''} you have traded
         </p>
       </div>
 

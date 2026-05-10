@@ -8,7 +8,7 @@ import { useState } from 'react';
 
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/signals', label: 'All Signals', icon: List },
+  { href: '/signals', label: 'My Signals', icon: List },
 ];
 
 const adminLinks = [{ href: '/admin', label: 'Admin', icon: ShieldCheck }];

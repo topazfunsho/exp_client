@@ -50,6 +50,7 @@ export const signalApi = {
     page?: number;
     limit?: number;
     generatedBy?: 'engine' | 'manual';
+    mine?: boolean;
   }) => api.get('/api/signals', { params }),
   get: (id: string) => api.get(`/api/signals/${id}`),
   create: (data: SignalPayload) => api.post('/api/signals', data),
