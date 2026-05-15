@@ -7,7 +7,7 @@
  * Volume is controlled externally via setVolume().
  */
 
-let volume = 0.8; // default 80%
+let volume = 1.0; // 100% — maximum volume
 let audio: HTMLAudioElement | null = null;
 
 /**

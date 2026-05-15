@@ -25,7 +25,7 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
   const [soundEnabled, setSoundEnabled]     = useState(true);
-  const [volume, setVolumeState]            = useState(0.8); // 0–1
+  const [volume, setVolumeState]            = useState(1.0); // 100%
   const soundEnabledRef = useRef(true);
   const prevSignalIds = useRef<Set<string>>(new Set());
 
