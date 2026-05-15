@@ -7,8 +7,8 @@ import SignalCard from '@/components/SignalCard';
 import StatsBar from '@/components/StatsBar';
 import EngineStatusBar from '@/components/EngineStatus';
 import Loader from '@/components/Loader';
-import { playSignalAlert, unlockAudio } from '@/lib/sound';
-import { RefreshCw, Zap, Cpu, TrendingUp, Volume2 } from 'lucide-react';
+import { playSignalAlert, unlockAudio, setVolume, getVolume } from '@/lib/sound';
+import { RefreshCw, Zap, Cpu, TrendingUp, Volume2, VolumeX } from 'lucide-react';
 
 // Only show pending and active signals — expired ones are removed immediately
 function shouldShow(s: Signal) {
@@ -25,17 +25,21 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
   const [soundEnabled, setSoundEnabled]     = useState(true);
-  const soundEnabledRef = useRef(true); // ref so fetchData always reads current value
+  const [volume, setVolumeState]            = useState(0.8); // 0–1
+  const soundEnabledRef = useRef(true);
   const prevSignalIds = useRef<Set<string>>(new Set());
 
   // Keep ref in sync with state
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
 
-  // Unlock AudioContext on first user interaction — required by all browsers
+  // Sync volume changes to the audio module
+  useEffect(() => { setVolume(volume); }, [volume]);
+
+  // Unlock AudioContext / preload audio on first user interaction
   useEffect(() => {
     const unlock = () => unlockAudio();
-    window.addEventListener('click',   unlock, { passive: true });
-    window.addEventListener('keydown', unlock, { passive: true });
+    window.addEventListener('click',      unlock, { passive: true });
+    window.addEventListener('keydown',    unlock, { passive: true });
     window.addEventListener('touchstart', unlock, { passive: true });
     return () => {
       window.removeEventListener('click',      unlock);
