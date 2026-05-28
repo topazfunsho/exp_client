@@ -7,7 +7,7 @@ import SignalCard from '@/components/SignalCard';
 import StatsBar from '@/components/StatsBar';
 import EngineStatusBar from '@/components/EngineStatus';
 import Loader from '@/components/Loader';
-import { playSignalAlert, unlockAudio, setVolume, getVolume } from '@/lib/sound';
+import { playSignalAlert, unlockAudio } from '@/lib/sound';
 import { RefreshCw, Zap, Cpu, TrendingUp, Volume2, VolumeX } from 'lucide-react';
 
 // Only show pending and active signals — expired ones are removed immediately
@@ -25,15 +25,12 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
   const [soundEnabled, setSoundEnabled]     = useState(true);
-  const [volume, setVolumeState]            = useState(1.0); // 100%
-  const soundEnabledRef = useRef(true);
-  const prevSignalIds = useRef<Set<string>>(new Set());
+  const soundEnabledRef  = useRef(true);
+  const prevSignalIds    = useRef<Set<string>>(new Set());
+  const hasFetchedOnce   = useRef(false); // true after the first successful fetch
 
   // Keep ref in sync with state
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
-
-  // Sync volume changes to the audio module
-  useEffect(() => { setVolume(volume); }, [volume]);
 
   // Unlock AudioContext / preload audio on first user interaction
   useEffect(() => {
@@ -69,16 +66,24 @@ export default function DashboardPage() {
         }
       }
 
-      // Flash banner + sound when a brand-new signal arrives
-      const newIds = liveSignals.map((s) => s._id);
-      const hasNew = newIds.some((id) => !prevSignalIds.current.has(id));
-      if (hasNew && prevSignalIds.current.size > 0) {
+      // Detect brand-new signal IDs that weren't in the previous fetch
+      const newIds   = liveSignals.map((s) => s._id);
+      const brandNew = newIds.filter((id) => !prevSignalIds.current.has(id));
+
+      if (brandNew.length > 0 && hasFetchedOnce.current) {
+        // New signal(s) arrived after the initial load — flash + sound
         setNewSignalFlash(true);
-        setTimeout(() => setNewSignalFlash(false), 3000);
-        // Use ref so we always read the latest soundEnabled value
-        if (soundEnabledRef.current) playSignalAlert();
+        setTimeout(() => setNewSignalFlash(false), 4000);
+        if (soundEnabledRef.current) {
+          // Ensure audio is unlocked then play immediately
+          unlockAudio();
+          playSignalAlert();
+        }
       }
+
+      // Update tracking refs
       prevSignalIds.current = new Set(newIds);
+      hasFetchedOnce.current = true;
 
       setDisplaySignals(merged);
       setStats(statsRes.data);
