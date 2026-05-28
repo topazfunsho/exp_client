@@ -143,8 +143,17 @@ export default function DashboardPage() {
                 : 'bg-gray-800 border-gray-700 text-gray-500 hover:text-gray-300'
             }`}
           >
-            <Volume2 className="w-4 h-4" />
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             {soundEnabled ? 'Sound on' : 'Sound off'}
+          </button>
+          {/* Test sound button */}
+          <button
+            onClick={() => { unlockAudio(); playSignalAlert(); }}
+            title="Test notification sound"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-sm text-gray-300 transition-colors active:scale-95"
+          >
+            <Volume2 className="w-4 h-4 text-yellow-400" />
+            Test sound
           </button>
           <button
             onClick={handleManualRefresh}
