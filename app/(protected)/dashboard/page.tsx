@@ -10,9 +10,9 @@ import Loader from '@/components/Loader';
 import { playSignalAlert, unlockAudio } from '@/lib/sound';
 import { RefreshCw, Zap, Cpu, TrendingUp, Volume2, VolumeX } from 'lucide-react';
 
-// Only show pending and active signals — expired ones are removed immediately
+// Show only active signals — they start immediately at candle open
 function shouldShow(s: Signal) {
-  return s.status === 'pending' || s.status === 'active';
+  return s.status === 'active';
 }
 
 export default function DashboardPage() {
