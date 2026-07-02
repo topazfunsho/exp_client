@@ -10,9 +10,9 @@ import Loader from '@/components/Loader';
 import { playSignalAlert, unlockAudio } from '@/lib/sound';
 import { RefreshCw, Zap, Cpu, TrendingUp, Volume2, VolumeX } from 'lucide-react';
 
-// Show only active signals — they start immediately at candle open
+// Show both pending (10s prep) and active signals
 function shouldShow(s: Signal) {
-  return s.status === 'active';
+  return s.status === 'pending' || s.status === 'active';
 }
 
 export default function DashboardPage() {
@@ -98,7 +98,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => fetchData(true), 15_000);
+    // Poll every 5s — engine checks every 15s, so new signals appear within 5s of generation
+    const interval = setInterval(() => fetchData(true), 5_000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
