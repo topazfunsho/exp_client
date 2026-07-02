@@ -136,7 +136,7 @@ export default function SignalsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {signals.map((signal) => (
-            <SignalCard key={signal._id} signal={signal} />
+            <SignalCard key={signal._id} signal={signal} alwaysBright />
           ))}
         </div>
       )}

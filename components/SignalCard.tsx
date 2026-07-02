@@ -10,6 +10,7 @@ import {
 interface Props {
   signal: Signal;
   isAdmin?: boolean;
+  alwaysBright?: boolean;  // forces bright colours regardless of signal age
   onResult?: (id: string, result: 'win' | 'loss' | 'draw') => void;
   onCancel?: (id: string) => void;
   onEdit?: (signal: Signal) => void;
@@ -46,24 +47,25 @@ function formatSecs(s: number) {
   return m > 0 ? `${pad(m)}:${pad(s % 60)}` : `${pad(s)}s`;
 }
 
-export default function SignalCard({ signal, isAdmin, onResult, onCancel, onEdit, onDelete }: Props) {
+export default function SignalCard({ signal, isAdmin, alwaysBright = false, onResult, onCancel, onEdit, onDelete }: Props) {
   const isBuy    = signal.direction === 'BUY';
   const isEngine = signal.generatedBy === 'engine';
 
   // Live countdown
   const [entrySecsLeft,  setEntrySecsLeft]  = useState(() => secsUntil(signal.entryTime));
   const [expirySecsLeft, setExpirySecsLeft] = useState(() => secsUntil(signal.expiryTime));
-  // Track freshness — re-evaluate every second
-  const [fresh, setFresh] = useState(() => isFresh(signal.createdAt));
+  // Track freshness — alwaysBright forces it permanently on
+  const [fresh, setFresh] = useState(() => alwaysBright || isFresh(signal.createdAt));
 
   useEffect(() => {
     const t = setInterval(() => {
       setEntrySecsLeft(secsUntil(signal.entryTime));
       setExpirySecsLeft(secsUntil(signal.expiryTime));
-      setFresh(isFresh(signal.createdAt));
+      // Only dim with age if alwaysBright is not set
+      if (!alwaysBright) setFresh(isFresh(signal.createdAt));
     }, 1000);
     return () => clearInterval(t);
-  }, [signal.entryTime, signal.expiryTime, signal.createdAt]);
+  }, [signal.entryTime, signal.expiryTime, signal.createdAt, alwaysBright]);
 
   // Phase
   const isPending = signal.status === 'pending' && entrySecsLeft > 0;
