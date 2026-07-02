@@ -10,7 +10,8 @@ import Loader from '@/components/Loader';
 import { playSignalAlert, unlockAudio } from '@/lib/sound';
 import { RefreshCw, Zap, Cpu, TrendingUp, Volume2, VolumeX } from 'lucide-react';
 
-// Show both pending (10s prep) and active signals
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 function shouldShow(s: Signal) {
   return s.status === 'pending' || s.status === 'active';
 }
@@ -25,14 +26,16 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated]       = useState<Date | null>(null);
   const [newSignalFlash, setNewSignalFlash] = useState(false);
   const [soundEnabled, setSoundEnabled]     = useState(true);
-  const soundEnabledRef  = useRef(true);
-  const prevSignalIds    = useRef<Set<string>>(new Set());
-  const hasFetchedOnce   = useRef(false); // true after the first successful fetch
+  const [sseConnected, setSseConnected]     = useState(false);
 
-  // Keep ref in sync with state
+  const soundEnabledRef = useRef(true);
+  const prevSignalIds   = useRef<Set<string>>(new Set());
+  const hasFetchedOnce  = useRef(false);
+  const sseRef          = useRef<EventSource | null>(null);
+
   useEffect(() => { soundEnabledRef.current = soundEnabled; }, [soundEnabled]);
 
-  // Unlock AudioContext / preload audio on first user interaction
+  // Unlock audio on first interaction
   useEffect(() => {
     const unlock = () => unlockAudio();
     window.addEventListener('click',      unlock, { passive: true });
@@ -45,6 +48,31 @@ export default function DashboardPage() {
     };
   }, []);
 
+  // ── Trigger alert when a new signal is detected ──────────────────────────
+  const triggerNewSignalAlert = useCallback(() => {
+    setNewSignalFlash(true);
+    setTimeout(() => setNewSignalFlash(false), 4000);
+    if (soundEnabledRef.current) {
+      unlockAudio();
+      playSignalAlert();
+    }
+    setLastUpdated(new Date());
+  }, []);
+
+  // ── Add a single signal pushed from SSE to the board ─────────────────────
+  const addSignalFromPush = useCallback((incoming: Signal) => {
+    if (!shouldShow(incoming)) return;
+    setDisplaySignals((prev) => {
+      // Don't add duplicates
+      if (prev.some((s) => s._id === incoming._id)) return prev;
+      triggerNewSignalAlert();
+      return [incoming, ...prev]; // prepend so newest is first
+    });
+    // Refresh stats quietly so the stats bar reflects the new signal
+    signalApi.stats().then((r) => setStats(r.data)).catch(() => {});
+  }, [triggerNewSignalAlert]);
+
+  // ── Full data fetch (initial load + manual refresh) ───────────────────────
   const fetchData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -56,33 +84,15 @@ export default function DashboardPage() {
       ]);
 
       const liveSignals: Signal[] = liveRes.data.signals ?? [];
+      const merged = liveSignals.filter(shouldShow);
 
-      const seen = new Set<string>();
-      const merged: Signal[] = [];
-      for (const s of liveSignals) {
-        if (!seen.has(s._id) && shouldShow(s)) {
-          seen.add(s._id);
-          merged.push(s);
-        }
+      // Detect brand-new IDs on silent refreshes (fallback path)
+      if (hasFetchedOnce.current) {
+        const brandNew = merged.filter((s) => !prevSignalIds.current.has(s._id));
+        if (brandNew.length > 0) triggerNewSignalAlert();
       }
 
-      // Detect brand-new signal IDs that weren't in the previous fetch
-      const newIds   = liveSignals.map((s) => s._id);
-      const brandNew = newIds.filter((id) => !prevSignalIds.current.has(id));
-
-      if (brandNew.length > 0 && hasFetchedOnce.current) {
-        // New signal(s) arrived after the initial load — flash + sound
-        setNewSignalFlash(true);
-        setTimeout(() => setNewSignalFlash(false), 4000);
-        if (soundEnabledRef.current) {
-          // Ensure audio is unlocked then play immediately
-          unlockAudio();
-          playSignalAlert();
-        }
-      }
-
-      // Update tracking refs
-      prevSignalIds.current = new Set(newIds);
+      prevSignalIds.current = new Set(merged.map((s) => s._id));
       hasFetchedOnce.current = true;
 
       setDisplaySignals(merged);
@@ -94,29 +104,71 @@ export default function DashboardPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [triggerNewSignalAlert]);
 
+  // ── SSE connection — receives signal pushes instantly ─────────────────────
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return;
+
+    let retryTimeout: ReturnType<typeof setTimeout>;
+
+    function connect() {
+      // Pass token as query param (EventSource doesn't support custom headers)
+      const es = new EventSource(`${API_URL}/api/signals/stream?token=${token}`);
+      sseRef.current = es;
+
+      es.onopen = () => {
+        setSseConnected(true);
+        console.log('[SSE] Connected');
+      };
+
+      es.addEventListener('signal', (e: MessageEvent) => {
+        try {
+          const signal: Signal = JSON.parse(e.data);
+          console.log('[SSE] New signal received:', signal.asset, signal.direction);
+          addSignalFromPush(signal);
+        } catch { /* ignore malformed */ }
+      });
+
+      es.onerror = () => {
+        setSseConnected(false);
+        es.close();
+        sseRef.current = null;
+        // Auto-reconnect after 5s
+        retryTimeout = setTimeout(connect, 5_000);
+      };
+    }
+
+    connect();
+
+    return () => {
+      clearTimeout(retryTimeout);
+      sseRef.current?.close();
+      sseRef.current = null;
+      setSseConnected(false);
+    };
+  }, [addSignalFromPush]);
+
+  // ── Initial load + fallback poll every 30s ────────────────────────────────
+  // The poll is a safety net in case SSE misses an event (e.g. reconnect gap).
   useEffect(() => {
     fetchData();
-    // Poll every 5s — engine checks every 15s, so new signals appear within 5s of generation
-    const interval = setInterval(() => fetchData(true), 5_000);
+    const interval = setInterval(() => fetchData(true), 30_000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  // Clears all signals immediately, then fetches fresh from server
   const handleManualRefresh = useCallback(async () => {
     setDisplaySignals([]);
     prevSignalIds.current = new Set();
     await fetchData(true);
   }, [fetchData]);
 
-  // Remove card after user marks WIN / LOSS / DRAW
   const handleResult = useCallback((id: string) => {
     setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
-    setTimeout(() => fetchData(true), 800);
-  }, [fetchData]);
+    setTimeout(() => signalApi.stats().then((r) => setStats(r.data)).catch(() => {}), 800);
+  }, []);
 
-  // Remove card after user cancels the signal
   const handleCancel = useCallback((id: string) => {
     setDisplaySignals((prev) => prev.filter((s) => s._id !== id));
   }, []);
@@ -132,17 +184,21 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-white">
             Welcome back, {user?.name?.split(' ')[0]} 👋
           </h1>
-          <p className="text-gray-400 text-sm mt-1">
-            Live trading signals — auto-generated every minute
+          <p className="text-gray-400 text-sm mt-1 flex items-center gap-2">
+            Live trading signals
+            {/* SSE connection indicator */}
+            <span className={`inline-flex items-center gap-1 text-xs ${sseConnected ? 'text-emerald-400' : 'text-yellow-400'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${sseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-400'}`} />
+              {sseConnected ? 'Live' : 'Connecting...'}
+            </span>
           </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
           <EngineStatusBar />
-          {/* Sound toggle */}
           <button
             onClick={() => setSoundEnabled((v) => !v)}
-            title={soundEnabled ? 'Mute signal alerts' : 'Unmute signal alerts'}
+            title={soundEnabled ? 'Mute alerts' : 'Unmute alerts'}
             className={`flex items-center gap-2 px-3 py-2 border rounded-xl text-sm transition-colors ${
               soundEnabled
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
@@ -152,7 +208,6 @@ export default function DashboardPage() {
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             {soundEnabled ? 'Sound on' : 'Sound off'}
           </button>
-          {/* Test sound button */}
           <button
             onClick={() => { unlockAudio(); playSignalAlert(); }}
             title="Test notification sound"
@@ -175,13 +230,18 @@ export default function DashboardPage() {
       {/* Stats */}
       {stats && <StatsBar stats={stats} />}
 
-      {/* New signal flash banner */}
+      {/* New signal flash */}
       {newSignalFlash && (
         <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl animate-pulse">
           <Zap className="w-5 h-5 text-emerald-400 shrink-0" />
           <p className="text-emerald-400 text-sm font-medium">
-            New signal generated by the engine!
+            New signal received!
           </p>
+          {lastUpdated && (
+            <span className="ml-auto text-xs text-emerald-600">
+              {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
         </div>
       )}
 
@@ -192,12 +252,11 @@ export default function DashboardPage() {
           <Zap className="w-10 h-10 text-gray-600 mx-auto mb-3" />
           <p className="text-gray-400 font-medium">No signals right now</p>
           <p className="text-gray-500 text-sm mt-1">
-            The engine generates a new signal every minute — check back soon
+            Waiting for Stochastic + RSI + MACD to align...
           </p>
         </div>
       ) : (
         <div className="space-y-8">
-          {/* AI Engine signals */}
           {engineSignals.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
@@ -208,24 +267,18 @@ export default function DashboardPage() {
                 </span>
                 {lastUpdated && (
                   <span className="ml-auto text-xs text-gray-500">
-                    Updated {lastUpdated.toLocaleTimeString()}
+                    {lastUpdated.toLocaleTimeString()}
                   </span>
                 )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {engineSignals.map((signal) => (
-                  <SignalCard
-                    key={signal._id}
-                    signal={signal}
-                    onResult={handleResult}
-                    onCancel={handleCancel}
-                  />
+                  <SignalCard key={signal._id} signal={signal} onResult={handleResult} onCancel={handleCancel} />
                 ))}
               </div>
             </section>
           )}
 
-          {/* Manual signals */}
           {manualSignals.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-4">
@@ -237,12 +290,7 @@ export default function DashboardPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {manualSignals.map((signal) => (
-                  <SignalCard
-                    key={signal._id}
-                    signal={signal}
-                    onResult={handleResult}
-                    onCancel={handleCancel}
-                  />
+                  <SignalCard key={signal._id} signal={signal} onResult={handleResult} onCancel={handleCancel} />
                 ))}
               </div>
             </section>
